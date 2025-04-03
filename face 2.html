@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Direction Detector</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #121212;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        video {
+            width: 80%;
+            max-height: 400px;
+            border: 2px solid #00ff00;
+            margin-bottom: 10px;
+        }
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-height: 400px;
+        }
+        #direction {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 10px;
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+<div id="direction">Face Direction: Detecting...</div>
+
+<script>
+    async function startCamera() {
+        try {
+            const video = document.getElementById("video");
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => resolve(video);
+            });
+        } catch (error) {
+            console.error("Camera access denied:", error);
+            alert("Please allow camera access and reload the page.");
+        }
+    }
+
+    async function loadFaceModel() {
+        try {
+            return await faceLandmarksDetection.load(faceLandmarksDetection.SupportedPackages.mediapipeFacemesh);
+        } catch (error) {
+            console.error("Model loading failed:", error);
+        }
+    }
+
+    async function detectFaceDirection(video) {
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const directionText = document.getElementById("direction");
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const model = await loadFaceModel();
+        if (!model) return;
+
+        async function analyzeFrame() {
+            try {
+                const predictions = await model.estimateFaces({ input: video });
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                if (predictions.length > 0) {
+                    predictions.forEach(prediction => {
+                        const keypoints = prediction.scaledMesh;
+
+                        // Detecting Face Direction
+                        const leftEye = keypoints[33]; // Left eye corner
+                        const rightEye = keypoints[263]; // Right eye corner
+                        const nose = keypoints[1]; // Nose tip
+
+                        const faceCenterX = (leftEye[0] + rightEye[0]) / 2;
+                        const noseX = nose[0];
+
+                        let direction = "Straight";
+                        if (noseX < faceCenterX - 10) {
+                            direction = "Looking Left";
+                        } else if (noseX > faceCenterX + 10) {
+                            direction = "Looking Right";
+                        }
+
+                        directionText.textContent = `Face Direction: ${direction}`;
+
+                        // Drawing Landmarks
+                        ctx.strokeStyle = "#00ff00";
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        keypoints.forEach(([x, y]) => {
+                            ctx.lineTo(x, y);
+                        });
+                        ctx.closePath();
+                        ctx.stroke();
+                    });
+                }
+            } catch (error) {
+                console.error("Error in face detection:", error);
+            }
+
+            requestAnimationFrame(analyzeFrame);
+        }
+
+        analyzeFrame();
+    }
+
+    startCamera().then(detectFaceDirection);
+</script>
+
+</body>
+</html>
